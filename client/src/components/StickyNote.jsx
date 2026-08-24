@@ -1,6 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Trash2, GripHorizontal } from 'lucide-react';
-import { NOTE_COLORS, throttle } from '../utils/ids';
+import { NOTE_COLORS, throttle, debounce } from '../utils/ids';
+
+// How long (ms) after the user stops typing before we flush to the server
+const TEXT_DEBOUNCE_MS = 400;
+
+// How long (ms) to keep blocking remote overwrites after the last keystroke
+const TYPING_GRACE_MS = 800;
 
 export default function StickyNote({
   note,
@@ -9,6 +15,46 @@ export default function StickyNote({
   onDeleteNote,
   isConflicted
 }) {
+  // ─── Local text state ──────────────────────────────────────────────────────
+  // Decoupled from note.text so keystrokes never re-render from the server prop
+  const [localText, setLocalText] = useState(note.text);
+
+  // True while the user is actively typing (suppresses remote overwrites)
+  const isTypingRef = useRef(false);
+  const typingGraceTimerRef = useRef(null);
+
+  // Always keep a ref to the latest server version so the debounced flush
+  // sends the right version number even if note.version changed between
+  // keystrokes and the debounce firing.
+  const noteVersionRef = useRef(note.version);
+  useEffect(() => { noteVersionRef.current = note.version; }, [note.version]);
+
+  // ─── Remote text sync guard ─────────────────────────────────────────────────
+  // Only apply remote text changes while the user is NOT typing.
+  useEffect(() => {
+    if (!isTypingRef.current) {
+      setLocalText(note.text);
+    }
+  }, [note.text]);
+
+  // ─── Debounced server flush ─────────────────────────────────────────────────
+  // One debounce instance per note mount. Rebuilt if onUpdateNote changes.
+  const debouncedSyncRef = useRef(null);
+  useEffect(() => {
+    const fn = debounce((noteId, noteColor, text) => {
+      onUpdateNote({
+        id: noteId,
+        text,
+        color: noteColor,
+        version: noteVersionRef.current,
+        isTextSync: true
+      });
+    }, TEXT_DEBOUNCE_MS);
+    debouncedSyncRef.current = fn;
+    return () => fn.cancel();
+  }, [onUpdateNote]);
+
+  // ─── Dragging ───────────────────────────────────────────────────────────────
   const [isDragging, setIsDragging] = useState(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
 
@@ -70,18 +116,49 @@ export default function StickyNote({
     };
   }, [isDragging, note.id, note.version]);
 
-  // Handle Text Change
-  const handleTextChange = (e) => {
+  // ─── Text change — optimistic UI + debounced server sync ──────────────────
+  const handleTextChange = useCallback((e) => {
     const newText = e.target.value;
+
+    // 1. Instant local update (zero-lag UI)
+    setLocalText(newText);
+
+    // 2. Mark typing; reset grace window
+    isTypingRef.current = true;
+    clearTimeout(typingGraceTimerRef.current);
+    typingGraceTimerRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+    }, TYPING_GRACE_MS);
+
+    // 3. Schedule ONE server push after the user pauses
+    if (debouncedSyncRef.current) {
+      debouncedSyncRef.current(note.id, note.color, newText);
+    }
+  }, [note.id, note.color]);
+
+  // Flush immediately when textarea loses focus so no text is lost
+  const handleBlur = useCallback(() => {
+    if (debouncedSyncRef.current) debouncedSyncRef.current.cancel();
+    isTypingRef.current = false;
+    clearTimeout(typingGraceTimerRef.current);
     onUpdateNote({
       id: note.id,
-      text: newText,
+      text: localText,
       color: note.color,
-      version: note.version
+      version: noteVersionRef.current,
+      isTextSync: true
     });
-  };
+  }, [note.id, note.color, localText, onUpdateNote]);
 
-  // Handle Color Change
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debouncedSyncRef.current) debouncedSyncRef.current.cancel();
+      clearTimeout(typingGraceTimerRef.current);
+    };
+  }, []);
+
+  // ─── Colour change (immediate, no debounce) ─────────────────────────────────
   const handleColorChange = (newColor) => {
     if (newColor === note.color) return;
     onUpdateNote({
@@ -125,8 +202,9 @@ export default function StickyNote({
       <div className="note-body">
         <textarea
           className="note-textarea"
-          value={note.text}
+          value={localText}
           onChange={handleTextChange}
+          onBlur={handleBlur}
           placeholder="Type your note here..."
         />
       </div>

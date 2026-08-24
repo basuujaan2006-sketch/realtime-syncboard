@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import Navbar from './components/Navbar';
 import Board from './components/Board';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -9,6 +9,22 @@ export default function App() {
   const [remoteCursors, setRemoteCursors] = useState({});
   const [conflicts, setConflicts] = useState([]);
   const [conflictedNoteIds, setConflictedNoteIds] = useState([]);
+
+  // Track operationIds we recently sent so we can suppress the CONFLICT toast
+  // that the server echoes back for our own operations (self-conflict suppression).
+  // Each entry is auto-expired after 5 s.
+  const pendingOpsRef = useRef(new Set());
+
+  const trackSentOp = useCallback((opId) => {
+    if (!opId) return;
+    pendingOpsRef.current.add(opId);
+    setTimeout(() => pendingOpsRef.current.delete(opId), 5000);
+  }, []);
+
+  // Track which noteIds the local user is currently editing.
+  // StickyNote sets isTextSync:true on debounced flushes; we use this to know
+  // when a note is "in flight" and should not be overwritten by a remote update.
+  const localEditingRef = useRef(new Set()); // noteIds currently being typed into
 
   // Handler for WebSocket incoming events
   const handleWebSocketMessage = useCallback((message) => {
@@ -70,7 +86,19 @@ export default function App() {
       case 'NOTE_UPDATED':
       case 'NOTE_MOVED': {
         if (note && note.id) {
-          setNotes((prev) => prev.map((n) => (n.id === note.id ? note : n)));
+          // Do NOT overwrite a note the local user is currently typing into.
+          // Their debounced flush will reconcile with the server shortly.
+          if (localEditingRef.current.has(note.id)) {
+            // Still update the stored version ref so when they flush they send
+            // the latest base version. We do this by updating everything except text.
+            setNotes((prev) => prev.map((n) =>
+              n.id === note.id
+                ? { ...note, text: n.text }  // keep local text, take remote metadata
+                : n
+            ));
+          } else {
+            setNotes((prev) => prev.map((n) => (n.id === note.id ? note : n)));
+          }
         }
         break;
       }
@@ -105,27 +133,44 @@ export default function App() {
       }
 
       case 'CONFLICT': {
+        // Suppress self-conflicts: if the operationId is one we recently sent,
+        // this is just the server bouncing our own op back. Update the note
+        // version silently but do NOT show the toast.
+        const isSelfConflict = message.operationId && pendingOpsRef.current.has(message.operationId);
+
         const targetNote = serverNote || (noteId ? notes.find((n) => n.id === noteId) : null);
         
-        // 1. Synchronize local note with authoritative server version
         if (targetNote && targetNote.id) {
-          setNotes((prev) => prev.map((n) => (n.id === targetNote.id ? targetNote : n)));
-          
-          // 2. Trigger conflict visual flash on note
-          setConflictedNoteIds((prev) => [...prev, targetNote.id]);
-          setTimeout(() => {
-            setConflictedNoteIds((prev) => prev.filter((id) => id !== targetNote.id));
-          }, 1600);
+          // Only overwrite local text if not actively typing
+          if (localEditingRef.current.has(targetNote.id)) {
+            // Preserve local text but adopt the authoritative version number
+            setNotes((prev) => prev.map((n) =>
+              n.id === targetNote.id
+                ? { ...targetNote, text: n.text }
+                : n
+            ));
+          } else {
+            setNotes((prev) => prev.map((n) => (n.id === targetNote.id ? targetNote : n)));
+          }
+
+          if (!isSelfConflict) {
+            // Flash the note border
+            setConflictedNoteIds((prev) => [...prev, targetNote.id]);
+            setTimeout(() => {
+              setConflictedNoteIds((prev) => prev.filter((id) => id !== targetNote.id));
+            }, 1600);
+          }
         }
 
-        // 3. Add floating conflict notification toast
-        const toastId = generateId('toast');
-        const alertMsg = message.message || 'Concurrent edit conflict detected. State resynchronized with server.';
-        setConflicts((prev) => [...prev, { id: toastId, message: alertMsg, noteId: targetNote?.id }]);
-
-        setTimeout(() => {
-          setConflicts((prev) => prev.filter((c) => c.id !== toastId));
-        }, 4500);
+        if (!isSelfConflict) {
+          // Show floating toast only for genuine concurrent conflicts
+          const toastId = generateId('toast');
+          const alertMsg = message.message || 'Concurrent edit conflict detected. State resynchronized with server.';
+          setConflicts((prev) => [...prev, { id: toastId, message: alertMsg, noteId: targetNote?.id }]);
+          setTimeout(() => {
+            setConflicts((prev) => prev.filter((c) => c.id !== toastId));
+          }, 4500);
+        }
         break;
       }
 
@@ -171,17 +216,29 @@ export default function App() {
 
   // 2. Update Note (Text / Color)
   const handleUpdateNote = useCallback((updatedNote) => {
+    const { isTextSync, ...notePayload } = updatedNote;
+
+    // Mark this note as locally-editing so remote updates don't clobber it
+    if (isTextSync) {
+      localEditingRef.current.add(notePayload.id);
+      // Clear the editing lock shortly after the server round-trip
+      setTimeout(() => localEditingRef.current.delete(notePayload.id), 2000);
+    }
+
     // Optimistic local update
-    setNotes((prev) => prev.map((n) => (n.id === updatedNote.id ? { ...n, ...updatedNote } : n)));
+    setNotes((prev) => prev.map((n) => (n.id === notePayload.id ? { ...n, ...notePayload } : n)));
+
+    const opId = generateId('op');
+    trackSentOp(opId);
 
     // Send over WebSocket
     sendMessage({
       type: 'UPDATE_NOTE',
-      operationId: generateId('op'),
+      operationId: opId,
       clientId: clientId,
-      note: updatedNote
+      note: notePayload
     });
-  }, [clientId, sendMessage]);
+  }, [clientId, sendMessage, trackSentOp]);
 
   // 3. Move Note Position
   const handleMoveNote = useCallback((id, x, y, version) => {
