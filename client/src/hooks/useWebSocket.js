@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { throttle } from '../utils/ids';
 
 const getWsUrl = () => {
+  if (import.meta.env && import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL;
+  }
   if (typeof window !== 'undefined' && window.location && window.location.hostname) {
     return `ws://${window.location.hostname}:5000`;
   }
