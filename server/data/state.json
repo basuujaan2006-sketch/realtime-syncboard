@@ -1,0 +1,65 @@
+{
+  "updatedAt": "2026-08-24T05:11:36.338Z",
+  "notes": [
+    {
+      "id": "note-mt6rusuv-qeage",
+      "text": "hello",
+      "x": 349,
+      "y": 170,
+      "color": "purple",
+      "version": 7,
+      "updatedAt": 1787547909483,
+      "lastModifiedBy": "user-1787547905345-sfde"
+    },
+    {
+      "id": "test-note-1787548119677",
+      "text": "Hello from WS1!",
+      "x": 200,
+      "y": 150,
+      "color": "yellow",
+      "version": 1,
+      "updatedAt": 1787548119678,
+      "lastModifiedBy": "user-1787548119171-54l6"
+    },
+    {
+      "id": "del-note-1787548147259",
+      "text": "To Delete",
+      "x": 100,
+      "y": 100,
+      "color": "pink",
+      "version": 1,
+      "updatedAt": 1787548147261,
+      "lastModifiedBy": "user-1787548146845-1j6c"
+    },
+    {
+      "id": "e2e-1787548175287",
+      "text": "Edited by WS1",
+      "x": 200,
+      "y": 100,
+      "color": "blue",
+      "version": 2,
+      "updatedAt": 1787548175492,
+      "lastModifiedBy": "user-1787548174969-hk0s"
+    },
+    {
+      "id": "e2e-1787548209986",
+      "text": "Edited by WS1",
+      "x": 200,
+      "y": 100,
+      "color": "blue",
+      "version": 2,
+      "updatedAt": 1787548210190,
+      "lastModifiedBy": "user-1787548209668-o2qx"
+    },
+    {
+      "id": "e2e-1787548295760",
+      "text": "Edited by WS1",
+      "x": 200,
+      "y": 100,
+      "color": "blue",
+      "version": 2,
+      "updatedAt": 1787548296073,
+      "lastModifiedBy": "user-1787548295253-lgwc"
+    }
+  ]
+}

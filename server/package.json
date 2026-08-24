@@ -1,0 +1,19 @@
+{
+  "name": "syncboard-server",
+  "version": "1.0.0",
+  "description": "SyncBoard backend server with Express, WebSockets, and state persistence",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
