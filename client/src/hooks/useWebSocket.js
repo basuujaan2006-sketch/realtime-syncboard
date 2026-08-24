@@ -2,13 +2,27 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { throttle } from '../utils/ids';
 
 const getWsUrl = () => {
-  if (import.meta.env && import.meta.env.VITE_WS_URL) {
-    return import.meta.env.VITE_WS_URL;
+  // 1. If explicit environment variable is provided (e.g. override in Vercel settings)
+  const envUrl = import.meta.env?.VITE_WS_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+    let cleanUrl = envUrl.trim();
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && cleanUrl.startsWith('ws://')) {
+      cleanUrl = cleanUrl.replace(/^ws:\/\//i, 'wss://');
+    }
+    return cleanUrl;
   }
-  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
-    return `ws://${window.location.hostname}:5000`;
+
+  // 2. Browser runtime environment check (Vercel Functions WebSocket endpoint /api/ws)
+  if (typeof window !== 'undefined' && window.location) {
+    const isHttps = window.location.protocol === 'https:';
+    const protocol = isHttps ? 'wss:' : 'ws:';
+    
+    // In both Vite dev proxy and Vercel production deployment, connect to same-origin /api/ws
+    return `${protocol}//${window.location.host}/api/ws`;
   }
-  return 'ws://localhost:5000';
+
+  // Fallback
+  return 'ws://localhost:3000/api/ws';
 };
 
 const RECONNECT_INTERVAL = 3000;

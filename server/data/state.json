@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-24T05:11:36.338Z",
+  "updatedAt": "2026-08-24T06:42:02.452Z",
   "notes": [
     {
       "id": "note-mt6rusuv-qeage",
@@ -60,6 +60,16 @@
       "version": 2,
       "updatedAt": 1787548296073,
       "lastModifiedBy": "user-1787548295253-lgwc"
+    },
+    {
+      "id": "live-test-1787553721959",
+      "text": "Live Test Note",
+      "x": 250,
+      "y": 150,
+      "color": "green",
+      "version": 1,
+      "updatedAt": 1787553722189,
+      "lastModifiedBy": "user-1787553721969-dsyl"
     }
   ]
 }

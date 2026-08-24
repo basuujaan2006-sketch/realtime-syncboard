@@ -16,11 +16,12 @@ async function bootstrap() {
   app.use(cors());
   app.use(express.json());
 
-  // HTTP Health Check Endpoint
-  app.get('/api/health', (req, res) => {
+  // HTTP Health & WebSocket Endpoint Status
+  app.get(['/api/health', '/api/ws'], (req, res) => {
     res.json({
       status: 'ok',
       service: 'SyncBoard Server',
+      endpoint: '/api/ws',
       timestamp: new Date().toISOString(),
       notesCount: getAllNotes().length
     });
